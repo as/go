@@ -71,7 +71,8 @@ func newProgs(fn *Node, worker int) *Progs {
 	pp.pos = fn.Pos
 	pp.settext(fn)
 	pp.nextLive = LivenessInvalid
-	pp.prevLive = LivenessInvalid
+	// PCDATA tables implicitly start with index -1.
+	pp.prevLive = LivenessIndex{-1, -1}
 	return pp
 }
 
@@ -234,17 +235,6 @@ func (f *Func) initLSym(hasBody bool) {
 			}
 		}
 
-		if !needABIAlias && allABIs {
-			// The compiler was asked to produce ABI
-			// wrappers for everything.
-			switch f.lsym.ABI() {
-			case obj.ABI0:
-				needABIAlias, aliasABI = true, obj.ABIInternal
-			case obj.ABIInternal:
-				needABIAlias, aliasABI = true, obj.ABI0
-			}
-		}
-
 		if needABIAlias {
 			// These LSyms have the same name as the
 			// native function, so we create them directly
@@ -307,6 +297,9 @@ func ggloblnod(nam *Node) {
 		flags |= obj.NOPTR
 	}
 	Ctxt.Globl(s, nam.Type.Width, flags)
+	if nam.Name.LibfuzzerExtraCounter() {
+		s.Type = objabi.SLIBFUZZER_EXTRA_COUNTER
+	}
 }
 
 func ggloblsym(s *obj.LSym, width int32, flags int16) {
@@ -315,18 +308,6 @@ func ggloblsym(s *obj.LSym, width int32, flags int16) {
 		flags &^= obj.LOCAL
 	}
 	Ctxt.Globl(s, int64(width), int(flags))
-}
-
-func isfat(t *types.Type) bool {
-	if t != nil {
-		switch t.Etype {
-		case TSTRUCT, TARRAY, TSLICE, TSTRING,
-			TINTER: // maybe remove later
-			return true
-		}
-	}
-
-	return false
 }
 
 func Addrconst(a *obj.Addr, v int64) {

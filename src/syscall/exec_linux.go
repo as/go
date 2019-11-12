@@ -196,7 +196,7 @@ func forkAndExecInChild1(argv0 *byte, argv, envv []*byte, chroot, dir *byte, att
 		}
 	}
 
-	hasRawVforkSyscall := runtime.GOARCH == "amd64" || runtime.GOARCH == "ppc64" || runtime.GOARCH == "s390x"
+	hasRawVforkSyscall := runtime.GOARCH == "amd64" || runtime.GOARCH == "ppc64" || runtime.GOARCH == "s390x" || runtime.GOARCH == "arm64"
 
 	// About to call fork.
 	// No more allocation or calls of non-assembly functions.
@@ -431,22 +431,6 @@ func forkAndExecInChild1(argv0 *byte, argv, envv []*byte, chroot, dir *byte, att
 		}
 	}
 
-	// Detach fd 0 from tty
-	if sys.Noctty {
-		_, _, err1 = RawSyscall(SYS_IOCTL, 0, uintptr(TIOCNOTTY), 0)
-		if err1 != 0 {
-			goto childerror
-		}
-	}
-
-	// Set the controlling TTY to Ctty
-	if sys.Setctty {
-		_, _, err1 = RawSyscall(SYS_IOCTL, uintptr(sys.Ctty), uintptr(TIOCSCTTY), 1)
-		if err1 != 0 {
-			goto childerror
-		}
-	}
-
 	// Pass 1: look for fd[i] < i and move those up above len(fd)
 	// so that pass 2 won't stomp on an fd it needs later.
 	if pipe < nextfd {
@@ -502,6 +486,22 @@ func forkAndExecInChild1(argv0 *byte, argv, envv []*byte, chroot, dir *byte, att
 	// to set them close-on-exec.
 	for i = len(fd); i < 3; i++ {
 		RawSyscall(SYS_CLOSE, uintptr(i), 0, 0)
+	}
+
+	// Detach fd 0 from tty
+	if sys.Noctty {
+		_, _, err1 = RawSyscall(SYS_IOCTL, 0, uintptr(TIOCNOTTY), 0)
+		if err1 != 0 {
+			goto childerror
+		}
+	}
+
+	// Set the controlling TTY to Ctty
+	if sys.Setctty {
+		_, _, err1 = RawSyscall(SYS_IOCTL, uintptr(sys.Ctty), uintptr(TIOCSCTTY), 1)
+		if err1 != 0 {
+			goto childerror
+		}
 	}
 
 	// Enable tracing if requested.

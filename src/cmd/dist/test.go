@@ -192,8 +192,13 @@ func (t *tester) run() {
 	}
 
 	// On a few builders, make GOROOT unwritable to catch tests writing to it.
+	restoreGOROOT := func() {}
 	if strings.HasPrefix(os.Getenv("GO_BUILDER_NAME"), "linux-") {
-		t.makeGOROOTUnwritable()
+		if os.Getuid() == 0 {
+			log.Printf("Not making GOROOT unwritable: running as root, so permissions would have no effect.")
+		} else {
+			restoreGOROOT = t.makeGOROOTUnwritable()
+		}
 	}
 
 	for _, dt := range t.tests {
@@ -208,12 +213,15 @@ func (t *tester) run() {
 			if t.keepGoing {
 				log.Printf("Failed: %v", err)
 			} else {
+				restoreGOROOT()
 				log.Fatalf("Failed: %v", err)
 			}
 		}
 	}
 	t.runPending(nil)
+	restoreGOROOT()
 	timelog("end", "dist test")
+
 	if t.failed {
 		fmt.Println("\nFAILED")
 		os.Exit(1)
@@ -418,7 +426,7 @@ func (t *tester) registerTests() {
 			cmd.Args = append(cmd.Args, "-tags=race")
 		}
 		cmd.Args = append(cmd.Args, "std")
-		if !t.race {
+		if t.shouldTestCmd() {
 			cmd.Args = append(cmd.Args, "cmd")
 		}
 		cmd.Stderr = new(bytes.Buffer)
@@ -585,7 +593,7 @@ func (t *tester) registerTests() {
 			},
 		})
 		// Also test a cgo package.
-		if t.cgoEnabled {
+		if t.cgoEnabled && t.internalLink() {
 			t.tests = append(t.tests, distTest{
 				name:    "pie_internal_cgo",
 				heading: "internal linking of -buildmode=pie",
@@ -703,7 +711,7 @@ func (t *tester) registerTests() {
 
 	// Doc tests only run on builders.
 	// They find problems approximately never.
-	if t.hasBash() && goos != "nacl" && goos != "js" && goos != "android" && !t.iOS() && os.Getenv("GO_BUILDER_NAME") != "" {
+	if t.hasBash() && goos != "js" && goos != "android" && !t.iOS() && os.Getenv("GO_BUILDER_NAME") != "" {
 		t.registerTest("doc_progs", "../doc/progs", "time", "go", "run", "run.go")
 		t.registerTest("wiki", "../doc/articles/wiki", "./test.bash")
 		t.registerTest("codewalk", "../doc/codewalk", "time", "./run")
@@ -735,7 +743,7 @@ func (t *tester) registerTests() {
 			})
 		}
 	}
-	if goos != "nacl" && goos != "android" && !t.iOS() && goos != "js" {
+	if goos != "android" && !t.iOS() && goos != "js" {
 		t.tests = append(t.tests, distTest{
 			name:    "api",
 			heading: "API check",
@@ -972,6 +980,8 @@ func (t *tester) supportedBuildmode(mode string) bool {
 			return true
 		case "darwin-amd64":
 			return true
+		case "freebsd-amd64":
+			return true
 		}
 		return false
 	case "pie":
@@ -1005,13 +1015,31 @@ func (t *tester) registerHostTest(name, heading, dir, pkg string) {
 }
 
 func (t *tester) runHostTest(dir, pkg string) error {
-	defer os.Remove(filepath.Join(goroot, dir, "test.test"))
-	cmd := t.dirCmd(dir, t.goTest(), "-c", "-o", "test.test", pkg)
+	out, err := exec.Command("go", "env", "GOEXE", "GOTMPDIR").Output()
+	if err != nil {
+		return err
+	}
+
+	parts := strings.Split(string(out), "\n")
+	if len(parts) < 2 {
+		return fmt.Errorf("'go env GOEXE GOTMPDIR' output contains <2 lines")
+	}
+	GOEXE := strings.TrimSpace(parts[0])
+	GOTMPDIR := strings.TrimSpace(parts[1])
+
+	f, err := ioutil.TempFile(GOTMPDIR, "test.test-*"+GOEXE)
+	if err != nil {
+		return err
+	}
+	f.Close()
+	defer os.Remove(f.Name())
+
+	cmd := t.dirCmd(dir, t.goTest(), "-c", "-o", f.Name(), pkg)
 	cmd.Env = append(os.Environ(), "GOARCH="+gohostarch, "GOOS="+gohostos)
 	if err := cmd.Run(); err != nil {
 		return err
 	}
-	return t.dirCmd(dir, "./test.test", "-test.short").Run()
+	return t.dirCmd(dir, f.Name(), "-test.short").Run()
 }
 
 func (t *tester) cgoTest(dt *distTest) error {
@@ -1403,32 +1431,45 @@ func (t *tester) packageHasBenchmarks(pkg string) bool {
 
 // makeGOROOTUnwritable makes all $GOROOT files & directories non-writable to
 // check that no tests accidentally write to $GOROOT.
-func (t *tester) makeGOROOTUnwritable() {
-	if os.Getenv("GO_BUILDER_NAME") == "" {
-		panic("not a builder")
-	}
-	if os.Getenv("GOROOT") == "" {
+func (t *tester) makeGOROOTUnwritable() (undo func()) {
+	dir := os.Getenv("GOROOT")
+	if dir == "" {
 		panic("GOROOT not set")
 	}
-	err := filepath.Walk(os.Getenv("GOROOT"), func(name string, fi os.FileInfo, err error) error {
-		if err != nil {
-			return err
+
+	type pathMode struct {
+		path string
+		mode os.FileMode
+	}
+	var dirs []pathMode // in lexical order
+
+	undo = func() {
+		for i := range dirs {
+			os.Chmod(dirs[i].path, dirs[i].mode) // best effort
 		}
-		if !fi.Mode().IsRegular() && !fi.IsDir() {
-			return nil
-		}
-		mode := fi.Mode()
-		newMode := mode & ^os.FileMode(0222)
-		if newMode != mode {
-			if err := os.Chmod(name, newMode); err != nil {
-				return err
+	}
+
+	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err == nil {
+			mode := info.Mode()
+			if mode&0222 != 0 && (mode.IsDir() || mode.IsRegular()) {
+				dirs = append(dirs, pathMode{path, mode})
 			}
 		}
 		return nil
 	})
-	if err != nil {
-		log.Fatalf("making builder's files read-only: %v", err)
+
+	// Run over list backward to chmod children before parents.
+	for i := len(dirs) - 1; i >= 0; i-- {
+		err := os.Chmod(dirs[i].path, dirs[i].mode&^0222)
+		if err != nil {
+			dirs = dirs[i:] // Only undo what we did so far.
+			undo()
+			log.Fatalf("failed to make GOROOT read-only: %v", err)
+		}
 	}
+
+	return undo
 }
 
 // shouldUsePrecompiledStdTest reports whether "dist test" should use
@@ -1448,6 +1489,17 @@ func (t *tester) shouldUsePrecompiledStdTest() bool {
 	}
 	_, err := os.Stat(bin)
 	return err == nil
+}
+
+func (t *tester) shouldTestCmd() bool {
+	if t.race {
+		return false
+	}
+	if goos == "js" && goarch == "wasm" {
+		// Issues 25911, 35220
+		return false
+	}
+	return true
 }
 
 // prebuiltGoPackageTestBinary returns the path where we'd expect

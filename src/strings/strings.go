@@ -610,7 +610,8 @@ func ToLower(s string) string {
 	return Map(unicode.ToLower, s)
 }
 
-// ToTitle returns a copy of the string s with all Unicode letters mapped to their title case.
+// ToTitle returns a copy of the string s with all Unicode letters mapped to
+// their Unicode title case.
 func ToTitle(s string) string { return Map(unicode.ToTitle, s) }
 
 // ToUpperSpecial returns a copy of the string s with all Unicode letters mapped to their
@@ -626,7 +627,7 @@ func ToLowerSpecial(c unicode.SpecialCase, s string) string {
 }
 
 // ToTitleSpecial returns a copy of the string s with all Unicode letters mapped to their
-// title case, giving priority to the special casing rules.
+// Unicode title case, giving priority to the special casing rules.
 func ToTitleSpecial(c unicode.SpecialCase, s string) string {
 	return Map(c.ToTitle, s)
 }
@@ -707,7 +708,7 @@ func isSeparator(r rune) bool {
 }
 
 // Title returns a copy of the string s with all Unicode letters that begin words
-// mapped to their title case.
+// mapped to their Unicode title case.
 //
 // BUG(rsc): The rule Title uses for word boundaries does not handle Unicode punctuation properly.
 func Title(s string) string {
@@ -968,7 +969,8 @@ func ReplaceAll(s, old, new string) string {
 }
 
 // EqualFold reports whether s and t, interpreted as UTF-8 strings,
-// are equal under Unicode case-folding.
+// are equal under Unicode case-folding, which is a more general
+// form of case-insensitivity.
 func EqualFold(s, t string) bool {
 	for s != "" && t != "" {
 		// Extract first rune from each string.

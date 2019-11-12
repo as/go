@@ -21,8 +21,8 @@ http://swig.org/. When running go build, any file with a .swig
 extension will be passed to SWIG. Any file with a .swigcxx extension
 will be passed to SWIG with the -c++ option.
 
-When either cgo or SWIG is used, go build will pass any .c, .m, .s,
-or .S files to the C compiler, and any .cc, .cpp, .cxx files to the C++
+When either cgo or SWIG is used, go build will pass any .c, .m, .s, .S
+or .sx files to the C compiler, and any .cc, .cpp, .cxx files to the C++
 compiler. The CC or CXX environment variables may be set to determine
 the C or C++ compiler, respectively, to use.
 	`,
@@ -493,6 +493,9 @@ General-purpose environment variables:
 	GOCACHE
 		The directory where the go command will store cached
 		information for reuse in future builds.
+	GODEBUG
+		Enable various debugging facilities. See 'go doc runtime'
+		for details.
 	GOENV
 		The location of the Go environment configuration file.
 		Cannot be set using 'go env -w'.
@@ -503,6 +506,10 @@ General-purpose environment variables:
 		Because the entries are space-separated, flag values must
 		not contain spaces. Flags listed on the command line
 		are applied after this list and therefore override it.
+	GOINSECURE
+		Comma-separated list of glob patterns (in the syntax of Go's path.Match)
+		of module path prefixes that should always be fetched in an insecure
+		manner. Only applies to dependencies that are being fetched directly.
 	GOOS
 		The operating system for which to compile code.
 		Examples are linux, darwin, windows, netbsd.
@@ -510,19 +517,16 @@ General-purpose environment variables:
 		For more details see: 'go help gopath'.
 	GOPROXY
 		URL of Go module proxy. See 'go help modules'.
-	GONOPROXY
+	GOPRIVATE, GONOPROXY, GONOSUMDB
 		Comma-separated list of glob patterns (in the syntax of Go's path.Match)
-		of module path prefixes that should always be fetched directly, ignoring
-		the GOPROXY setting. See 'go help modules'.
+		of module path prefixes that should always be fetched directly
+		or that should not be compared against the checksum database.
+		See 'go help module-private'.
+	GOROOT
+		The root of the go tree.
 	GOSUMDB
 		The name of checksum database to use and optionally its public key and
 		URL. See 'go help module-auth'.
-	GONOSUMDB
-		Comma-separated list of glob patterns (in the syntax of Go's path.Match)
-		of module path prefixes that should not be compared against the checksum
-		database. See 'go help module-auth'.
-	GOROOT
-		The root of the go tree.
 	GOTMPDIR
 		The directory where the go command will write
 		temporary source files, packages, and binaries.
@@ -645,7 +649,7 @@ the extension of the file name. These extensions are:
 	.m
 		Objective-C source files. Only useful with cgo, and always
 		compiled with the OS-native compiler.
-	.s, .S
+	.s, .S, .sx
 		Assembler source files.
 		If the package uses cgo or SWIG, these will be assembled with the
 		OS-native assembler (typically gcc (sic)); otherwise they

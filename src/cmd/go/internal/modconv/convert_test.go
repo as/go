@@ -19,8 +19,9 @@ import (
 	"cmd/go/internal/cfg"
 	"cmd/go/internal/modfetch"
 	"cmd/go/internal/modfetch/codehost"
-	"cmd/go/internal/modfile"
-	"cmd/go/internal/module"
+
+	"golang.org/x/mod/modfile"
+	"golang.org/x/mod/module"
 )
 
 func TestMain(m *testing.M) {
@@ -128,7 +129,7 @@ func TestConvertLegacyConfig(t *testing.T) {
 
 		{
 			// golang.org/issue/24585 - confusion about v2.0.0 tag in legacy non-v2 module
-			"github.com/fishy/gcsbucket", "v0.0.0-20150410205453-618d60fe84e0",
+			"github.com/fishy/gcsbucket", "v0.0.0-20180217031846-618d60fe84e0",
 			`module github.com/fishy/gcsbucket
 
 			require (

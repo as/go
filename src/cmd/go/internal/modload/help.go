@@ -231,12 +231,25 @@ evaluates to the available tagged version nearest to the comparison target
 The string "latest" matches the latest available tagged version,
 or else the underlying source repository's latest untagged revision.
 
-A revision identifier for the underlying source repository,
-such as a commit hash prefix, revision tag, or branch name,
-selects that specific code revision. If the revision is
-also tagged with a semantic version, the query evaluates to
-that semantic version. Otherwise the query evaluates to a
-pseudo-version for the commit.
+The string "upgrade" is like "latest", but if the module is
+currently required at a later version than the version "latest"
+would select (for example, a newer pre-release version), "upgrade"
+will select the later version instead.
+
+The string "patch" matches the latest available tagged version
+of a module with the same major and minor version numbers as the
+currently required version. If no version is currently required,
+"patch" is equivalent to "latest".
+
+A revision identifier for the underlying source repository, such as
+a commit hash prefix, revision tag, or branch name, selects that
+specific code revision. If the revision is also tagged with a
+semantic version, the query evaluates to that semantic version.
+Otherwise the query evaluates to a pseudo-version for the commit.
+Note that branches and tags with names that are matched by other
+query syntax cannot be selected this way. For example, the query
+"v2" means the latest version starting with "v2", not the branch
+named "v2".
 
 All queries prefer release versions to pre-release versions.
 For example, "<v1.2.3" will prefer to return "v1.2.2"
@@ -348,19 +361,8 @@ HTTP response. The string "direct" may appear in the proxy list,
 to cause a direct connection to be attempted at that point in the search.
 Any proxies listed after "direct" are never consulted.
 
-The GONOPROXY environment variable is a comma-separated list of
-glob patterns (in the syntax of Go's path.Match) of module path prefixes
-that should always be fetched directly, ignoring the GOPROXY setting.
-For example,
-
-	GONOPROXY=*.corp.example.com,rsc.io/private
-
-forces a direct connection to download modules with path prefixes matching
-either pattern, including "git.corp.example.com/xyzzy", "rsc.io/private",
-and "rsc.io/private/quux".
-
-The 'go env -w' command (see 'go help env') can be used to set these variables
-for future go command invocations.
+The GOPRIVATE and GONOPROXY environment variables allow bypassing
+the proxy for selected modules. See 'go help module-private' for details.
 
 No matter the source of the modules, the go command checks downloads against
 known checksums, to detect unexpected changes in the content of any specific
@@ -475,5 +477,12 @@ Because the module graph defines the meaning of import statements, any
 commands that load packages also use and therefore update go.mod,
 including go build, go get, go install, go list, go test, go mod graph,
 go mod tidy, and go mod why.
+
+The expected language version, set by the go directive, determines
+which language features are available when compiling the module.
+Language features available in that version will be available for use.
+Language features removed in earlier versions, or added in later versions,
+will not be available. Note that the language version does not affect
+build tags, which are determined by the Go release being used.
 	`,
 }
